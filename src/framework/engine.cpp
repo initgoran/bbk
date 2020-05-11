@@ -197,8 +197,8 @@ bool Engine::addClient(SocketConnection *conn) {
         else
             event.events = EPOLLIN;
         //log() << "EPOLL socket " << conn->socket() << event.events;
-        if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, conn->socket(), &event) < 0) {
-            errno_log() << "cannot add server socket";
+        if (epoll_ctl(epoll_fd, EPOLL_CTL_MOD, conn->socket(), &event) < 0) {
+            errno_log() << "cannot add cached socket";
             return false;
         }
 #endif
@@ -611,13 +611,6 @@ bool Engine::fatalSelectError() {
 }
 
 void Engine::killConnection(int fd) {
-#ifdef USE_EPOLL
-    struct epoll_event event;
-    if (epoll_ctl(epoll_fd, EPOLL_CTL_DEL, fd, &event) < 0 &&
-        errno != ENOENT) {
-        errno_log() << "cannot remove epoll socket " << fd;
-    }
-#endif
     auto p = connectionStore.find(fd);
     if (p != connectionStore.end()) {
         Socket *conn = p->second;
@@ -634,6 +627,14 @@ void Engine::killConnection(int fd) {
                 // Otherwise the socket will get closed when conn is deleted:
                 conn->setSocket(-1);
             }
+#ifdef USE_EPOLL
+        } else {
+            struct epoll_event event;
+            if (epoll_ctl(epoll_fd, EPOLL_CTL_DEL, fd, &event) < 0 &&
+                errno != ENOENT) {
+                errno_log() << "cannot remove epoll socket " << fd;
+            }
+#endif
         }
         if (Task *task = conn->owner()) {
             if (c)
