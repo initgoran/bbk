@@ -10,6 +10,10 @@
 #include <netdb.h>
 #endif
 
+#ifdef USE_EPOLL
+#include <sys/epoll.h>
+#endif
+
 #ifdef _WIN32
 #include <ws2tcpip.h>
 #else
@@ -28,6 +32,13 @@
 
 Engine::Engine(std::string label) :
     Logger(label) {
+#ifdef USE_EPOLL
+    epoll_fd = epoll_create1(0);
+    if (epoll_fd < 0) {
+        errno_log() << "cannot create epoll instance";
+        exit(1);
+    }
+#endif
 #ifdef USE_GNUTLS
     x509_cred.resize(1);
     if (gnutls_global_init() < 0 ||
@@ -123,6 +134,16 @@ bool Engine::addServer(ServerSocket *conn) {
     }
     dbg_log() << "addServer fd " << conn->socket();
     connectionStore[conn->socket()] = conn;
+#ifdef USE_EPOLL
+    struct epoll_event event;
+    event.data.fd = conn->socket();
+    event.events = EPOLLIN;
+    log() << "EPOLL socket " << conn->socket() << " IN";
+    if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, conn->socket(), &event) < 0) {
+        errno_log() << "cannot add server socket";
+        return false;
+    }
+#endif
     return true;
 }
 
@@ -167,7 +188,31 @@ bool Engine::addClient(SocketConnection *conn) {
         keepaliveCache.erase(p);
         //log() << "Cache size is " << keepaliveCache.size();
         conn->setState(conn->connected());
+#ifdef USE_EPOLL
+        struct epoll_event event;
+        event.data.fd = conn->socket();
+        if (conn->state() == PollState::WRITE ||
+            conn->state() == PollState::READ_WRITE)
+            event.events = EPOLLIN | EPOLLOUT;
+        else
+            event.events = EPOLLIN;
+        log() << "EPOLL socket " << conn->socket() << event.events;
+        if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, conn->socket(), &event) < 0) {
+            errno_log() << "cannot add server socket";
+            return false;
+        }
+#endif
     } else if (conn->asyncConnect()) {
+#ifdef USE_EPOLL
+        struct epoll_event event;
+        event.data.fd = conn->socket();
+        event.events = EPOLLIN | EPOLLOUT;
+        log() << "EPOLL socket " << conn->socket() << event.events;
+        if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, conn->socket(), &event) < 0) {
+            errno_log() << "cannot add server socket";
+            return false;
+        }
+#endif
     } else {
         delete conn;
         return false;
@@ -352,6 +397,33 @@ bool Engine::run(double max_time) {
         if (reclaimConnections())
             continue; // Recheck after callbacks
 
+#ifdef USE_EPOLL
+        const unsigned int MAX_EVENTS = 200;
+        struct epoll_event events[MAX_EVENTS];
+        int epoll_timeout_ms = static_cast<int>(msTo(deadline));
+        if (epoll_timeout_ms <= 0)
+            return true;
+        //log() << "EPOLL timeout " << epoll_timeout_ms;
+        int num_events =
+            epoll_wait(epoll_fd, events, MAX_EVENTS, epoll_timeout_ms);
+        //log() << "EPOLL return " << num_events;
+
+        if (num_events < 0 && !Socket::isTempError()) {
+            errno_log() << "Epoll error";
+            return false;
+        }
+        for (int i = 0; i < num_events; ++i) {
+            struct epoll_event &event = events[i];
+            if ( event.events & (EPOLLERR) ) {
+                log() << "error socket " << event.data.fd;
+                killConnection(event.data.fd);
+            } else {
+                bool readable = event.events & (EPOLLIN|EPOLLHUP);
+                bool writable = event.events & EPOLLOUT;
+                handleFileDescriptor(event.data.fd, readable, writable);
+            }
+        }
+#else
         fd_set readFds, writeFds, errFds;
         int max_fd = setFds(readFds, writeFds, errFds);
 
@@ -383,6 +455,7 @@ bool Engine::run(double max_time) {
             if (max_open_fd_reached)
                 handleMaxOpenFdReached();
         }
+#endif
     }
 
     yield_called = false;
@@ -460,6 +533,21 @@ void Engine::handleFileDescriptor(int fd, bool readable, bool writable) {
                 s = c->doWrite();
             }
             if (s != c->state()) {
+#ifdef USE_EPOLL
+                struct epoll_event event;
+                event.data.fd = fd;
+                if (s == PollState::WRITE ||
+                    s == PollState::READ_WRITE)
+                    event.events = EPOLLIN|EPOLLOUT;
+                else
+                    event.events = EPOLLIN;
+                log() << "EPOLL socket " << fd << " " << event.events;
+                if (epoll_ctl(epoll_fd, EPOLL_CTL_MOD, fd, &event) < 0) {
+                    err_log() << "EPOLL_CTL_MOD failed on " << fd;
+                    killConnection(fd);
+                    return;
+                }
+#endif
                 c->setState(s);
             }
             return;
@@ -523,6 +611,13 @@ bool Engine::fatalSelectError() {
 }
 
 void Engine::killConnection(int fd) {
+#ifdef USE_EPOLL
+    struct epoll_event event;
+    if (epoll_ctl(epoll_fd, EPOLL_CTL_DEL, fd, &event) < 0 &&
+        errno != ENOENT) {
+        errno_log() << "cannot remove epoll socket " << fd;
+    }
+#endif
     auto p = connectionStore.find(fd);
     if (p != connectionStore.end()) {
         Socket *conn = p->second;
@@ -631,12 +726,32 @@ void Engine::handleIncoming(ServerSocket *server) {
 #endif
     client->setState(client->connected());
     connectionStore[newfd] = client;
+#ifdef USE_EPOLL
+    struct epoll_event event;
+    event.data.fd = newfd;
+    event.events = EPOLLIN;
+    log() << "EPOLL socket " << newfd << " " << event.events;
+    if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, newfd, &event) < 0) {
+        errno_log() << "cannot add server socket";
+        return;
+    }
+#endif
     server->owner()->connAdded(client);
 }
 
 void Engine::addConnected(SocketConnection *conn) {
     dbg_log() << "addConnected " << conn->socket();
     connectionStore[conn->socket()] = conn;
+#ifdef USE_EPOLL
+    struct epoll_event event;
+    event.data.fd = conn->socket();
+    event.events = EPOLLIN;
+    log() << "EPOLL socket " << conn->socket() << " " << event.events;
+    if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, conn->socket(), &event) < 0) {
+        errno_log() << "cannot add server socket";
+        return;
+    }
+#endif
     conn->owner()->connAdded(conn);
     conn->setState(conn->connected());
 }

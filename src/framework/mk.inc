@@ -53,6 +53,9 @@ ifeq ($(CXX),g++)
 CXXFLAGS += --pedantic -Wextra
 endif
 
+ifeq ($(EPOLL),1)
+CXXFLAGS += -DUSE_EPOLL
+endif
 ifeq ($(GNUTLS),1)
 CXXFLAGS += -DUSE_GNUTLS -I/usr/local/include
 LIBS += -L/usr/local/lib -lgnutls

@@ -124,6 +124,9 @@ private:
     // that should identify the type of connection.
     std::multimap<std::string, int> keepaliveCache;
 
+#ifdef USE_EPOLL
+    int epoll_fd;
+#endif
 #ifdef USE_GNUTLS
     std::map<int, gnutls_session_t> tls_session_cache;
     std::string ca_bundle;
