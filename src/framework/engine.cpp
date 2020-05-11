@@ -138,7 +138,7 @@ bool Engine::addServer(ServerSocket *conn) {
     struct epoll_event event;
     event.data.fd = conn->socket();
     event.events = EPOLLIN;
-    log() << "EPOLL socket " << conn->socket() << " IN";
+    //log() << "EPOLL socket " << conn->socket() << " IN";
     if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, conn->socket(), &event) < 0) {
         errno_log() << "cannot add server socket";
         return false;
@@ -196,7 +196,7 @@ bool Engine::addClient(SocketConnection *conn) {
             event.events = EPOLLIN | EPOLLOUT;
         else
             event.events = EPOLLIN;
-        log() << "EPOLL socket " << conn->socket() << event.events;
+        //log() << "EPOLL socket " << conn->socket() << event.events;
         if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, conn->socket(), &event) < 0) {
             errno_log() << "cannot add server socket";
             return false;
@@ -207,7 +207,7 @@ bool Engine::addClient(SocketConnection *conn) {
         struct epoll_event event;
         event.data.fd = conn->socket();
         event.events = EPOLLIN | EPOLLOUT;
-        log() << "EPOLL socket " << conn->socket() << event.events;
+        //log() << "EPOLL socket " << conn->socket() << event.events;
         if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, conn->socket(), &event) < 0) {
             errno_log() << "cannot add server socket";
             return false;
@@ -541,7 +541,7 @@ void Engine::handleFileDescriptor(int fd, bool readable, bool writable) {
                     event.events = EPOLLIN|EPOLLOUT;
                 else
                     event.events = EPOLLIN;
-                log() << "EPOLL socket " << fd << " " << event.events;
+                //log() << "EPOLL socket " << fd << " " << event.events;
                 if (epoll_ctl(epoll_fd, EPOLL_CTL_MOD, fd, &event) < 0) {
                     err_log() << "EPOLL_CTL_MOD failed on " << fd;
                     killConnection(fd);
@@ -730,7 +730,7 @@ void Engine::handleIncoming(ServerSocket *server) {
     struct epoll_event event;
     event.data.fd = newfd;
     event.events = EPOLLIN;
-    log() << "EPOLL socket " << newfd << " " << event.events;
+    //log() << "EPOLL socket " << newfd << " " << event.events;
     if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, newfd, &event) < 0) {
         errno_log() << "cannot add server socket";
         return;
@@ -746,7 +746,7 @@ void Engine::addConnected(SocketConnection *conn) {
     struct epoll_event event;
     event.data.fd = conn->socket();
     event.events = EPOLLIN;
-    log() << "EPOLL socket " << conn->socket() << " " << event.events;
+    //log() << "EPOLL socket " << conn->socket() << " " << event.events;
     if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, conn->socket(), &event) < 0) {
         errno_log() << "cannot add server socket";
         return;
