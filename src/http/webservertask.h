@@ -46,8 +46,7 @@ public:
 
     // Overload this if you really have to take control over how the response
     // is sent. Send up to bytes_left bytes through conn, return _exactly_ the
-    // number of bytes written. To get it correct, you should just do
-    //    return conn->sendData(...)
+    // number of bytes written.
     virtual size_t sendResponseData(HttpServerConnection * /* conn */,
                                     size_t /* bytes_left */) {
         // Essentially, your overloaded code should do this:
@@ -58,14 +57,20 @@ public:
         throw std::logic_error("sendResponseData not implemented");
     }
 
+    // Client has issued a new POST request. We have received the request
+    // headers. Check conn->remainingPostData() for the number of bytes the
+    // client intends to send (or std::string::npos, if unknown).
+    // Return READING_POST_DATA to accept, CLOSE to reject.
     virtual HttpState newPostRequest(HttpServerConnection *conn,
                                      const std::string &uri);
 
+    // Some, but not all, of client's POST data has arrived.
     // Return true to continue, false to close the connection.
     virtual bool partialPostData(HttpServerConnection *conn,
                                  const char *buffer, size_t len);
 
-    // Send HTTP response. Return
+    // Last piece of POST data has arrived and we must send a HTTP response
+    // (like after newGetRequest.)
     virtual HttpState lastPostData(HttpServerConnection *conn,
                                    const char *buffer, size_t len);
 
@@ -81,7 +86,7 @@ public:
     virtual void wsHandshakeFinished(HttpServerConnection *conn,
                                      const std::string &uri);
 
-    //Override this to implement a response to a preflight (OPTIONS) request.
+    // Override this to implement a response to a preflight (OPTIONS) request.
     virtual HttpState preflightRequest(HttpServerConnection * /* conn */,
                                        const std::string & /* uri */) {
         return HttpState::CLOSE;
