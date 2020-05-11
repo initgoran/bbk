@@ -645,8 +645,8 @@ void Engine::killConnection(int fd) {
         delete conn;
         connectionStore.erase(p);
     } else {
-        for (auto it : keepaliveCache) {
-            if (it.second == fd) {
+        for (auto it=keepaliveCache.begin(); it!=keepaliveCache.end(); ++it) {
+            if (it->second == fd) {
                 log() << "close keepalive socket " << fd;
 #ifdef USE_GNUTLS
                 auto p = tls_session_cache.find(fd);
@@ -655,6 +655,12 @@ void Engine::killConnection(int fd) {
                     tls_session_cache.erase(p);
                 }
 #endif
+#ifdef USE_EPOLL
+                struct epoll_event event;
+                if (epoll_ctl(epoll_fd, EPOLL_CTL_DEL, fd, &event) < 0)
+                    errno_log() << "cannot remove epoll socket " << fd;
+#endif
+                keepaliveCache.erase(it);
                 Socket::closeSocket(fd);
                 break;
             }
