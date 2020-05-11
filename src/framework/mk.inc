@@ -8,6 +8,7 @@ CXXFLAGS += -O2 -W -Wall -I$(DIRLEVEL)
 
 ifeq ($(OS),Linux)
 CXX = g++
+EPOLL ?= 1
 endif
 
 ifeq ($(OS),Darwin)
