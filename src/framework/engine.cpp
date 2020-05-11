@@ -133,7 +133,6 @@ bool Engine::addServer(ServerSocket *conn) {
 bool Engine::addClient(SocketConnection *conn) {
     if (!conn)
         return false;
-
 #ifndef _WIN32
     if (conn->socket() >= 0) {
         if (connectionStore.find(conn->socket()) != connectionStore.end()) {
@@ -168,7 +167,8 @@ bool Engine::addClient(SocketConnection *conn) {
         keepaliveCache.erase(p);
         //log() << "Cache size is " << keepaliveCache.size();
         conn->setState(conn->connected());
-    } else if (!conn->asyncConnect()) {
+    } else if (conn->asyncConnect()) {
+    } else {
         delete conn;
         return false;
     }
@@ -333,7 +333,6 @@ void Engine::handleMaxOpenFdReached() {
 // Handle network events for max_time seconds or until yield is called.
 bool Engine::run(double max_time) {
     deadline = timeAfter(max_time);
-    yield_called = false;
 
     {
         // Find sockets that will expire and delete them.
@@ -371,54 +370,35 @@ bool Engine::run(double max_time) {
             if (fatalSelectError())
                 return false;
         } else {
-            doFds(readFds, writeFds, errFds, max_fd);
+            for (int fd=0; fd<=max_fd; ++fd)
+                if (FD_ISSET(fd, &errFds)) {
+                    err_log() << "socket error " << fd;
+                    killConnection(fd);
+                } else {
+                    bool readable = FD_ISSET(fd, &readFds);
+                    bool writable = FD_ISSET(fd, &writeFds);
+                    if (readable || writable)
+                        handleFileDescriptor(fd, readable, writable);
+                }
             if (max_open_fd_reached)
                 handleMaxOpenFdReached();
         }
     }
+
+    yield_called = false;
     reclaimConnections();
     return true;
 }
 
-void Engine::doFds(const fd_set &r, const fd_set &w, const fd_set &e, int max) {
-
-    for (auto it=keepaliveCache.begin(); it != keepaliveCache.end(); ) {
-        int fd = it->second;
-        if (FD_ISSET(fd, &r) || FD_ISSET(fd, &e)) {
-            log() << "close keepalive socket " << fd;
-#ifdef USE_GNUTLS
-            auto p = tls_session_cache.find(fd);
-            if (p != tls_session_cache.end()) {
-                gnutls_deinit(p->second);
-                tls_session_cache.erase(p);
-            }
-#endif
-            Socket::closeSocket(fd);
-            it = keepaliveCache.erase(it);
-        } else
-            ++it;
-    }
-
-    for (int fd=0; fd<=max; ++fd) {
-        // We cannot loop over connectionStore since it may
-        // be modified in all sorts of ways within the loop.
+void Engine::handleFileDescriptor(int fd, bool readable, bool writable) {
+    {
         auto p = connectionStore.find(fd);
-        if (p == connectionStore.end())
-            continue;
-
-        if (FD_ISSET(fd, &e)) {
-            err_log() << "socket error " << fd;
+        if (p == connectionStore.end()) {
+            // Keep-alive socket?
             killConnection(fd);
-            continue;
+            return;
         }
         Socket *conn = p->second;
-
-        bool readable = FD_ISSET(fd, &r);
-        bool writable = FD_ISSET(fd, &w);
-
-        if (!readable && !writable)
-            continue;
-
         SocketConnection *c = dynamic_cast<SocketConnection *>(conn);
 
         if (!c) {
@@ -427,40 +407,41 @@ void Engine::doFds(const fd_set &r, const fd_set &w, const fd_set &e, int max) {
                 dynamic_cast<ServerSocket *>(conn)) {
                 // New connection on listen socket
                 handleIncoming(srv);
-                continue;
+                return;
             }
             err_log() << "event on non-client connection";
             killConnection(fd);
-            continue;
+            return;
         }
 
-        if (readable && (c->state() == PollState::READ ||
-                         c->state() == PollState::READ_WRITE)) {
+        PollState s = c->state();
+        if (readable && (s == PollState::READ ||
+                         s == PollState::READ_WRITE)) {
             // React to reading before considering writing:
-            c->setState(c->doRead(fd));
+            s = c->doRead(fd);
             // If it switches to sending, we'll probably be able to send some data
             // immediately, saving us a select roundtrip.
-            if (c->state() == PollState::WRITE) {
+            if (s == PollState::WRITE) {
                 writable = true;
             } else {
-                continue;
+                c->setState(s);
+                return;
             }
         }
 
         if (writable) {
-            PollState s;
-            if (c->state() == PollState::CONNECTING) {
+            if (s == PollState::CONNECTING) {
                 if (c->inError()) {
                     err_log() << "async connect failed";
                     killConnection(fd);
-                    continue;
+                    return;
                 }
 #ifdef USE_GNUTLS
                 if (c->use_tls) {
                     if (!c->init_tls_client(x509_cred[0], !ca_bundle.empty())) {
                         log() << "cannot enable TLS" << fd;
                         killConnection(fd);
-                        continue;
+                        return;
                     }
                     int ret = c->try_tls_handshake();
                     if (ret >= 0) {
@@ -468,7 +449,7 @@ void Engine::doFds(const fd_set &r, const fd_set &w, const fd_set &e, int max) {
                     } else if (gnutls_error_is_fatal(ret)) {
                         err_log() << "TLS handshake failure: " << gnutls_strerror(ret);
                         killConnection(fd);
-                        continue;
+                        return;
                     } else {
                         s = PollState::TLS_HANDSHAKE;
                     }
@@ -478,8 +459,10 @@ void Engine::doFds(const fd_set &r, const fd_set &w, const fd_set &e, int max) {
             } else {
                 s = c->doWrite();
             }
-            c->setState(s);
-            continue;
+            if (s != c->state()) {
+                c->setState(s);
+            }
+            return;
         }
 
 #ifdef USE_GNUTLS
@@ -491,17 +474,16 @@ void Engine::doFds(const fd_set &r, const fd_set &w, const fd_set &e, int max) {
                 err_log() << "TLS handshake failure: " << gnutls_strerror(ret);
                 killConnection(fd);
             }
-            continue;
+            return;
         }
 #endif
 
         // The socket is readable, but we don't want to read it
         // since state is neither READ nor READ_WRITE.
         // The connection may have been closed by peer.
-        PollState s = c->doRead(fd);
+        s = c->doRead(fd);
         c->setState(s);
     }
-
 }
 
 bool Engine::fatalSelectError() {
@@ -566,6 +548,21 @@ void Engine::killConnection(int fd) {
         }
         delete conn;
         connectionStore.erase(p);
+    } else {
+        for (auto it : keepaliveCache) {
+            if (it.second == fd) {
+                log() << "close keepalive socket " << fd;
+#ifdef USE_GNUTLS
+                auto p = tls_session_cache.find(fd);
+                if (p != tls_session_cache.end()) {
+                    gnutls_deinit(p->second);
+                    tls_session_cache.erase(p);
+                }
+#endif
+                Socket::closeSocket(fd);
+                break;
+            }
+        }
     }
 }
 

@@ -112,8 +112,8 @@ private:
     int setFds(fd_set &r, fd_set &w, fd_set &e);
     // Check error from select, return false if fatal:
     bool fatalSelectError();
-    // Take care of all network events:
-    void doFds(const fd_set &r, const fd_set &w, const fd_set &e, int max);
+    // Take care of event on filedescriptor
+    void handleFileDescriptor(int fd, bool readable, bool writable);
 
     // Map socket number to Socket object:
     std::map<int, Socket *> connectionStore;
@@ -123,6 +123,7 @@ private:
     // chosen by the tasks owning the connections,
     // that should identify the type of connection.
     std::multimap<std::string, int> keepaliveCache;
+
 #ifdef USE_GNUTLS
     std::map<int, gnutls_session_t> tls_session_cache;
     std::string ca_bundle;
