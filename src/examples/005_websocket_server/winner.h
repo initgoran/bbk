@@ -15,7 +15,7 @@ public:
         WebServerTask("Winner", cfg) {
     }
 
-    // Client want's to open a websocket connection on uri.
+    // Client wants to open a websocket connection on uri.
     // Return true to accept, false to close the connection.
     bool newWsRequest(HttpServerConnection *conn,
                       const std::string &uri) override;
