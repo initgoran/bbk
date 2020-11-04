@@ -76,10 +76,11 @@ public:
     // If current log is a file (ofstream), reopen it with new filename:
     static void reopenLogFile(const std::string &filename);
 
-    // Max number of lines of log/warn/err:
-    static void setLogLimit(unsigned int loglines = 100000,
-                            unsigned int warnlines = 10000,
-                            unsigned int errlines = 10000);
+    // Max number of lines of log/warn/err
+    // If 0, reset to previous (non-zero) number of lines
+    static void setLogLimit(unsigned int loglines = 0,
+                            unsigned int warnlines = 0,
+                            unsigned int errlines = 0);
 
     static void sayTime(std::ostream &stream);
     static bool inError() {
@@ -236,6 +237,7 @@ private:
 #ifdef USE_THREADS
     thread_local
 #endif
-    static unsigned int log_count, warn_count, err_count;
+    static unsigned int log_count, warn_count, err_count,
+                        log_count_saved, warn_count_saved, err_count_saved;
     static DummyStream _dummyLog;
 };
