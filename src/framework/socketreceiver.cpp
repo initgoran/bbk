@@ -73,7 +73,10 @@ thread_local
     dbg_log() << "Received socket " << newfd << " from " << ip
               << " port " << port;
 
-    return owner()->newClient(newfd, ip, port, this);
+    SocketConnection *conn = owner()->newClient(newfd, ip, port, this);
+    if (!conn)
+        closeSocket(newfd);
+    return conn;
 }
 
 bool SocketReceiver::passSocketToPeer(int fd) {
@@ -81,7 +84,6 @@ bool SocketReceiver::passSocketToPeer(int fd) {
 
     log() << "passing fd " << fd << " to peer";
     ssize_t ret = sendmsg(socket(), &fdpass_msg, MSG_DONTWAIT);
-    closeSocket(fd);
     if (ret < 0) {
         if (errno == EAGAIN) {
             log() << "cannot pass socket: job queue full";
