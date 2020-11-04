@@ -79,22 +79,15 @@ thread_local
     return conn;
 }
 
-bool SocketReceiver::passSocketToPeer(int fd) {
+int SocketReceiver::passSocketToPeer(int fd) {
     memcpy(CMSG_DATA(cmsg), &fd, sizeof(fd));
-
     log() << "passing fd " << fd << " to peer";
-    ssize_t ret = sendmsg(socket(), &fdpass_msg, MSG_DONTWAIT);
-    if (ret < 0) {
-        if (errno == EAGAIN) {
-            log() << "cannot pass socket: job queue full";
-            // The peer is probably broken. Kill it.
-            closeMe();
-        } else {
-            errno_log() << "cannot pass socket";
-        }
-        return false;
-    }
-    return true;
+    int ret;
+    if (sendmsg(socket(), &fdpass_msg, MSG_DONTWAIT) < 0)
+        ret = errno;
+    else
+        ret = 0;
+    return ret;
 }
 
 ssize_t SocketReceiver::passMessageToPeer(const char *buf, size_t len) {
