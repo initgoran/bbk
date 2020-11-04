@@ -89,7 +89,7 @@ public:
         if (err_count) {
             in_error = true;
             --err_count;
-            *_logFile << "\n" << elapsed() << ' ' << label << " *** "
+            *_logFile << "\n" << global_elapsed_ms() << ' ' << label << " *** "
                       << (err_count ? "ERROR ***: " :  "LAST ERR ***: ");
             return *_logFile;
         } else {
@@ -99,7 +99,7 @@ public:
     static std::ostream &warn_log(const std::string &label) {
         if (warn_count) {
             --warn_count;
-            *_logFile << "\n" << elapsed() << ' ' << label << " *** "
+            *_logFile << "\n" << global_elapsed_ms() << ' ' << label << " *** "
                       << (warn_count ? "WARNING ***: " : "LAST WARN ***: ");
             return *_logFile;
         } else {
@@ -109,7 +109,7 @@ public:
     static std::ostream &log(const std::string &label) {
         if (log_count) {
             --log_count;
-            *_logFile << "\n" << elapsed() << ' ' << label << ": ";
+            *_logFile << "\n" << global_elapsed_ms() << ' ' << label << ": ";
             if (!log_count)
                 *_logFile << "LAST LOG: ";
             return *_logFile;
@@ -128,8 +128,8 @@ public:
     }
     static double secondsSince(const TimePoint &t);
     static double secondsTo(const TimePoint &t);
-    static long msSince(const TimePoint &t);
-    static long msTo(const TimePoint &t);
+    static int64_t msSince(const TimePoint &t);
+    static int64_t msTo(const TimePoint &t);
     static bool hasExpired(const TimePoint &t) {
         return secondsSince(t) >= 0;
     }
@@ -164,6 +164,13 @@ public:
 
 protected:
 
+#if DEBUG
+#define TASKRUNNER_LOGERR
+#define TASKRUNNER_LOGWARN
+#define TASKRUNNER_LOGINFO
+#define TASKRUNNER_LOGBDG
+#endif
+
 #ifdef TASKRUNNER_LOGERR
     std::ostream &errno_log() const;
     std::ostream &err_log() const {
@@ -196,7 +203,7 @@ protected:
 #endif
 #ifdef TASKRUNNER_LOGDBG
     std::ostream &dbg_log() const {
-        *_logFile << "\n" << elapsed() << ' ' << _label << ": ";
+        *_logFile << "\n" << global_elapsed_ms() << ' ' << _label << ": ";
         return *_logFile;
     }
 #else
@@ -205,8 +212,8 @@ protected:
     }
 #endif
 private:
-    static long elapsed() {
-        return msSince(start_time);
+    static int64_t global_elapsed_ms() {
+        return msSince(global_start_time);
     }
     std::string _label;
 
@@ -217,7 +224,7 @@ private:
 #ifdef USE_THREADS
     thread_local
 #endif
-    static TimePoint start_time;
+    static TimePoint global_start_time;
 #ifdef USE_THREADS
     thread_local
 #endif
