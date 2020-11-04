@@ -713,6 +713,13 @@ void Engine::handleIncoming(ServerSocket *server) {
         return;
     }
     int newfd = client->socket();
+#ifndef USE_EPOLL
+    if (newfd > 1023) {
+        err_log() << "out of file descriptors";
+        delete client;
+        return;
+    }
+#endif
 
 #ifdef USE_GNUTLS
     log() << "Socket " << newfd << " TLS=" << server->tlsKey();
