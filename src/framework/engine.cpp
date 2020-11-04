@@ -136,6 +136,7 @@ bool Engine::addServer(ServerSocket *conn) {
     connectionStore[conn->socket()] = conn;
 #ifdef USE_EPOLL
     struct epoll_event event;
+    // To avoid uninitialized data: event.data.u64 = 0;
     event.data.fd = conn->socket();
     event.events = EPOLLIN;
     //log() << "EPOLL socket " << conn->socket() << " IN";
@@ -190,6 +191,7 @@ bool Engine::addClient(SocketConnection *conn) {
         conn->setState(conn->connected());
 #ifdef USE_EPOLL
         struct epoll_event event;
+        // To avoid uninitialized data: event.data.u64 = 0;
         event.data.fd = conn->socket();
         if (conn->state() == PollState::WRITE ||
             conn->state() == PollState::READ_WRITE)
@@ -205,6 +207,7 @@ bool Engine::addClient(SocketConnection *conn) {
     } else if (conn->asyncConnect()) {
 #ifdef USE_EPOLL
         struct epoll_event event;
+        // To avoid uninitialized data: event.data.u64 = 0;
         event.data.fd = conn->socket();
         event.events = EPOLLIN | EPOLLOUT;
         //log() << "EPOLL socket " << conn->socket() << event.events;
@@ -535,6 +538,7 @@ void Engine::handleFileDescriptor(int fd, bool readable, bool writable) {
             if (s != c->state()) {
 #ifdef USE_EPOLL
                 struct epoll_event event;
+                // To avoid uninitialized data: event.data.u64 = 0;
                 event.data.fd = fd;
                 if (s == PollState::WRITE ||
                     s == PollState::READ_WRITE)
@@ -735,6 +739,7 @@ void Engine::handleIncoming(ServerSocket *server) {
     connectionStore[newfd] = client;
 #ifdef USE_EPOLL
     struct epoll_event event;
+    // To avoid uninitialized data: event.data.u64 = 0;
     event.data.fd = newfd;
     event.events = EPOLLIN;
     //log() << "EPOLL socket " << newfd << " " << event.events;
@@ -751,6 +756,7 @@ void Engine::addConnected(SocketConnection *conn) {
     connectionStore[conn->socket()] = conn;
 #ifdef USE_EPOLL
     struct epoll_event event;
+    // To avoid uninitialized data: event.data.u64 = 0;
     event.data.fd = conn->socket();
     event.events = EPOLLIN;
     //log() << "EPOLL socket " << conn->socket() << " " << event.events;
