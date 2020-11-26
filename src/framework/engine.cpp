@@ -16,8 +16,6 @@
 
 #ifdef _WIN32
 #include <ws2tcpip.h>
-#else
-#include <sys/select.h>
 #endif
 
 #include <set>

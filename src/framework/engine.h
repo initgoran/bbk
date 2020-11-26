@@ -15,6 +15,8 @@
 
 #ifdef _WIN32
 #include <winsock2.h>
+#else
+#include <sys/select.h>
 #endif
 
 class Socket;
