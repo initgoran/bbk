@@ -225,7 +225,7 @@ void CliClient::newEventFromAgent(std::deque<std::string> &return_msgs,
     } else if (event == "measurementList") {
         std::vector<json11::Json> vec = arg_obj["measurements"].array_items();
         if (out_quiet) {
-            *out << arg_obj.string_value() << std::endl;
+            *out << arg_obj.dump() << std::endl;
         } else if (vec.empty()) {
             *out << "No measurements found." << std::endl;
         } else {
