@@ -150,7 +150,7 @@ PollState HttpConnection::incoming_ws_header(const char *buf, size_t buffer_pos)
     }
 
     if (incoming_is_masked)
-        memcpy(incoming_mask, msg + hdr_len, 4);
+        memcpy(incoming_mask, msg + hdr_len - 4, 4);
 
     unsigned char opcode = msg[0] & 0xf;
     //bool is_final = (msg[0] & 0x80);
