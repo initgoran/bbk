@@ -153,7 +153,11 @@ PollState HttpConnection::incoming_ws_header(const char *buf, size_t buffer_pos)
         memcpy(incoming_mask, msg + hdr_len - 4, 4);
 
     unsigned char opcode = msg[0] & 0xf;
-    //bool is_final = (msg[0] & 0x80);
+    bool is_final = (msg[0] & 0x80);
+    if (opcode)
+        current_opcode = is_final ? 0 : opcode;
+    else
+        opcode = current_opcode;
 
     HttpTask *owner_task = dynamic_cast<HttpTask *>(owner());
     if (!owner_task)
