@@ -1,4 +1,4 @@
-QT          +=  webenginewidgets
+QT          +=  widgets webenginewidgets
 TARGET       =  bredbandskollen
 TEMPLATE     =  app
 QMAKE_CXXFLAGS += -std=c++11 -DBBK_WEBVIEW
